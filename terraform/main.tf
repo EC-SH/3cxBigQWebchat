@@ -23,6 +23,11 @@ resource "google_project_service" "cloudbuild_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "secretmanager_api" {
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 # ── Artifact Registry ──────────────────────────────────────────
 
 resource "google_artifact_registry_repository" "repo" {
@@ -32,6 +37,28 @@ resource "google_artifact_registry_repository" "repo" {
   description   = "Container images for sentinel frontend and backend"
 
   depends_on = [google_project_service.cloudbuild_api]
+}
+
+# ── Secrets ────────────────────────────────────────────────────
+
+resource "google_secret_manager_secret" "gemini_api_key" {
+  secret_id = "gemini-api-key"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.secretmanager_api]
+}
+
+resource "google_secret_manager_secret_version" "gemini_api_key_version" {
+  secret      = google_secret_manager_secret.gemini_api_key.id
+  secret_data = var.google_api_key
+}
+
+resource "google_secret_manager_secret_iam_member" "backend_secret_accessor" {
+  project   = google_secret_manager_secret.gemini_api_key.project
+  secret_id = google_secret_manager_secret.gemini_api_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
 }
 
 # ── Service Account ────────────────────────────────────────────
@@ -60,8 +87,13 @@ resource "google_cloud_run_v2_service" "sentinel_backend" {
       }
 
       env {
-        name  = "GOOGLE_API_KEY"
-        value = var.google_api_key
+        name = "GOOGLE_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.gemini_api_key.secret_id
+            version = "latest"
+          }
+        }
       }
 
       resources {

@@ -4,7 +4,10 @@ param(
 
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
-$Version = Get-Date -Format "yyyyMMdd-HHmmss"
+$Version = git rev-parse --short HEAD 2>$null
+if (-not $Version) {
+    $Version = Get-Date -Format "yyyyMMdd-HHmmss"
+}
 Write-Host "Deploy Version: $Version" -ForegroundColor Gray
 Write-Host ""
 
